@@ -1,33 +1,28 @@
+# parse.py
 from langchain_community.llms import Ollama
 from langchain_core.prompts import ChatPromptTemplate
 
 template = (
-    "You are tasked with extracting specific information from the following text content: {dom_content}. "
-    "Please follow these instructions carefully: \n\n"
-    "1. **Extract Information:** Only extract the information that directly matches the provided description: {parse_description}. "
-    "2. **No Extra Content:** Do not include any additional text, comments, or explanations in your response. "
-    "3. **Empty Response:** If no information matches the description, return an empty string ('')."
-    "4. **Direct Data Only:** Your output should contain only the data that is explicitly requested, with no other text."
+    "You are given page text: {dom_content}\n"
+    "Extract ONLY the data that matches: {parse_description}\n"
+    "Output MUST be a pure JSON array of objects (no markdown, no code fences, no prose).\n"
+    "Each object should use these keys when available: "
+    "name, price, image_url, url, category, brand, sku.\n"
+    "If a field is missing, use an empty string.\n"
 )
 
-# Ollama must be running with a model pulled (e.g. `ollama pull llama3`)
 model = Ollama(model="llama3")
-
 
 def parse_with_ollama(dom_chunks, parse_description):
     prompt = ChatPromptTemplate.from_template(template)
     chain = prompt | model
 
-    parsed_results = []
-
+    parts = []
     for i, chunk in enumerate(dom_chunks, start=1):
-        response = chain.invoke(
-            {"dom_content": chunk, "parse_description": parse_description}
-        )
+        resp = chain.invoke({"dom_content": chunk, "parse_description": parse_description})
         print(f"Parsed batch: {i} of {len(dom_chunks)}")
+        text = getattr(resp, "content", resp)
+        parts.append(text if isinstance(text, str) else str(text))
 
-        # response may be a Message object → extract text safely
-        text = getattr(response, "content", response)
-        parsed_results.append(text if isinstance(text, str) else str(text))
-
-    return "\n".join(parsed_results)
+    # Join all chunk results; we'll parse/merge in main.py
+    return "\n".join(parts)
